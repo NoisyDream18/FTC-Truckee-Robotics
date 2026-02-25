@@ -33,28 +33,20 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 /*
- * This OpMode illustrates how to program your robot to drive field relative.  This means
- * that the robot drives the direction you push the joystick regardless of the current orientation
- * of the robot.
- *
- * This OpMode assumes that you have four mecanum wheels each on its own motor named:
- *   front_left_motor, front_right_motor, back_left_motor, back_right_motor
- *
- *   and that the left motors are flipped such that when they turn clockwise the wheel moves backwards
- *
- * Use Android Studio to Copy this Class, and Paste it into your team's code folder with a new name.
- * Remove or comment out the @Disabled line to add this OpMode to the Driver Station OpMode list
  *
  */
 @TeleOp(name = "TeleOpNew [TESTING]", group = "Robot")
 public class TeleOpNew extends OpMode {
 
-    private DcMotor flywheel;
+    private DcMotorEx flywheel;
     private CRServo servo;
     private DcMotor leftFront;
     private DcMotor rightFront;
@@ -62,15 +54,29 @@ public class TeleOpNew extends OpMode {
     private DcMotor rightBack;
 
     int bankVelocity;
-    int farVelocity;
+
+    int shootMs;
+
+    boolean lastPress;
 
     // This declares the IMU needed to get the current direction the robot is facing
     IMU imu;
 
+
+    //Timers used
+    ElapsedTime shootTimer; // Timer used for shooting
+    ElapsedTime telemetryTime; // Timer for telemetry refreshing
+
+    boolean shooting;
+    boolean shotActive;
+
+    int telemetryRefresh;
+
     @Override
     public void init() {
 
-        flywheel = hardwareMap.get(DcMotor.class, "flywheel");
+        // Mapping motors
+        flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
         servo = hardwareMap.get(CRServo.class, "servo");
         leftFront = hardwareMap.get(DcMotor.class, "leftFront");
         rightFront = hardwareMap.get(DcMotor.class, "rightFront");
@@ -81,6 +87,7 @@ public class TeleOpNew extends OpMode {
         flywheel.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         flywheel.setDirection(DcMotor.Direction.REVERSE);
         servo.setPower(0);
+
         // Setting mecanum drive
         leftFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         leftFront.setDirection(DcMotor.Direction.REVERSE);
@@ -90,9 +97,20 @@ public class TeleOpNew extends OpMode {
         leftBack.setDirection(DcMotor.Direction.FORWARD);
         rightBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightBack.setDirection(DcMotor.Direction.REVERSE);
-        // Setting our velocity targets. These values are in ticks per second!
-        bankVelocity = 1300;
-        farVelocity = 3000;
+
+        // Initializing values
+        shooting = false;
+        shotActive = false;
+        lastPress = false;
+        shootTimer = new ElapsedTime();
+        shootTimer.reset();
+        telemetryTime = new ElapsedTime();
+        telemetryTime.reset();
+
+        // Settings
+        shootMs = 300; // Time after flywheel spins up to lift servo to release the ball
+        bankVelocity = 1300; // Flywheel velocity (1300 default)
+        telemetryRefresh = 200; // Telemetry refresh rate in milliseconds (Higher value = better performance)
 
         imu = hardwareMap.get(IMU.class, "imu");
         // This needs to be changed to match the orientation on your robot
@@ -108,22 +126,87 @@ public class TeleOpNew extends OpMode {
 
     @Override
     public void loop() {
+        // Main logic
+        drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);
+        shoot(shootMs, gamepad1.b);
 
-        driveField(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);
+        // Reset IMU yaw
+        if(gamepad1.a){
+            imu.resetYaw();
+        }
+
+        // TODO: Read IMU then fix telementry
+
+        // Telemetry
+        if(telemetryTime.milliseconds() > telemetryRefresh){
+
+            telemetry.addData("Heading (deg)", imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
+            telemetry.addData("Shooting", shotActive);
+            telemetry.update();
+            telemetryTime.reset();
+        }
 
     }
 
-    private void driveField(float yAxisL, float xAxisL, float xAxisR) {
+    /**
+     * Calculates motor control for TeleOp movement
+     *
+     * @param yAxisL Left Joystick Up/Down (Forwards/Backwards)
+     * @param xAxisL Left Joystick Left/Right (Strafe)
+     * @param xAxisR Right Joystick Left/Right (Turning)
+     */
+    private void drive(float yAxisL, float xAxisL, float xAxisR) {
 
-//        float leftFrontPower = yAxisL + xAxisL + xAxisR;
-//        float rightFrontPower = (yAxisL - xAxisL) - xAxisR;
-//        float leftBackPower = (yAxisL - xAxisL) + xAxisR;
-//        float rightBackPower = (yAxisL + xAxisL) - xAxisR;
+        double lf = yAxisL + xAxisL + xAxisR;
+        double rf = yAxisL - xAxisL - xAxisR;
+        double lb = yAxisL - xAxisL + xAxisR;
+        double rb = yAxisL + xAxisL - xAxisR;
 
-        // Setting motor power
-        leftFront.setPower(yAxisL + xAxisL + xAxisR);
-        rightFront.setPower((yAxisL - xAxisL) - xAxisR);
-        leftBack.setPower((yAxisL - xAxisL) + xAxisR);
-        rightBack.setPower((yAxisL + xAxisL) - xAxisR);
+        double max = Math.max(1.0,
+                Math.max(Math.abs(lf),
+                        Math.max(Math.abs(rf),
+                                Math.max(Math.abs(lb), Math.abs(rb)))));
+
+        lf /= max;
+        rf /= max;
+        lb /= max;
+        rb /= max;
+
+        leftFront.setPower(lf);
+        rightFront.setPower(rf);
+        leftBack.setPower(lb);
+        rightBack.setPower(rb);
+    }
+
+    /**
+     * Checks button to shoot ball
+     *
+     * @param ms milliseconds for servo to turn after flywheel, ms > 0
+     * @param button boolean value for gamepad button to be used
+     */
+    private void shoot(int ms, boolean button){
+
+        boolean pressed = button && !lastPress;
+        lastPress = button;
+
+        if(shotActive){
+            if(!shooting && shootTimer.milliseconds() > ms){
+                servo.setPower(-1);
+                shooting = true;
+                shootTimer.reset();
+            }
+            else if(shooting && shootTimer.milliseconds() > ms){
+                shooting = false;
+                shotActive = false;
+                servo.setPower(0);
+                flywheel.setVelocity(0);
+                // timer.reset(); // If you want to reset timer after shot ends
+            }
+        } else if(pressed){
+            shootTimer.reset();
+            flywheel.setVelocity(bankVelocity);
+            shooting = false;
+            shotActive = true;
+        }
     }
 }
