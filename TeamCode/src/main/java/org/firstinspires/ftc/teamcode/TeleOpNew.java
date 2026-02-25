@@ -83,12 +83,12 @@ public class TeleOpNew extends OpMode {
         leftBack = hardwareMap.get(DcMotor.class, "leftBack");
         rightBack = hardwareMap.get(DcMotor.class, "rightBack");
 
-        // Setting the direction and mode for the motors
+        // Initializing servo and flywheel
         flywheel.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         flywheel.setDirection(DcMotor.Direction.REVERSE);
         servo.setPower(0);
 
-        // Setting mecanum drive
+        // Initializing driving motors
         leftFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         leftFront.setDirection(DcMotor.Direction.REVERSE);
         rightFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -107,13 +107,9 @@ public class TeleOpNew extends OpMode {
         telemetryTime = new ElapsedTime();
         telemetryTime.reset();
 
-        // Settings
-        shootMs = 300; // Time after flywheel spins up to lift servo to release the ball
-        bankVelocity = 1300; // Flywheel velocity (1300 default)
-        telemetryRefresh = 200; // Telemetry refresh rate in milliseconds (Higher value = better performance)
-
+        // Initializing IMU
         imu = hardwareMap.get(IMU.class, "imu");
-        // This needs to be changed to match the orientation on your robot
+        // TODO: This needs to be changed to match the orientation of robot
         RevHubOrientationOnRobot.LogoFacingDirection logoDirection =
                 RevHubOrientationOnRobot.LogoFacingDirection.UP;
         RevHubOrientationOnRobot.UsbFacingDirection usbDirection =
@@ -122,6 +118,12 @@ public class TeleOpNew extends OpMode {
         RevHubOrientationOnRobot orientationOnRobot = new
                 RevHubOrientationOnRobot(logoDirection, usbDirection);
         imu.initialize(new IMU.Parameters(orientationOnRobot));
+
+        // Settings
+        shootMs = 300; // Time after flywheel spins up to lift servo to release the ball
+        bankVelocity = 1300; // Flywheel velocity (1300 default)
+        telemetryRefresh = 200; // Telemetry refresh rate in milliseconds (Higher value = better performance)
+
     }
 
     @Override
@@ -135,7 +137,7 @@ public class TeleOpNew extends OpMode {
             imu.resetYaw();
         }
 
-        // TODO: Read IMU then fix telementry
+        // TODO: Read IMU then fix telemetry
 
         // Telemetry
         if(telemetryTime.milliseconds() > telemetryRefresh){
