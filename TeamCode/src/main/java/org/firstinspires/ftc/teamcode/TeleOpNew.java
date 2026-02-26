@@ -36,9 +36,8 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
-
-import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+
 
 /*
  *
@@ -48,20 +47,23 @@ public class TeleOpNew extends OpMode {
 
     private DcMotorEx flywheel;
     private CRServo servo;
-    private DcMotor leftFront;
-    private DcMotor rightFront;
-    private DcMotor leftBack;
-    private DcMotor rightBack;
+    private DcMotorEx leftFront;
+    private DcMotorEx rightFront;
+    private DcMotorEx leftBack;
+    private DcMotorEx rightBack;
 
     int bankVelocity;
 
-    int shootMs;
+    double shootMs;
 
-    boolean lastPress;
+    double fineTurnFactor;
+    boolean lastPressShoot;
+    boolean lastPressSpeed;
+
+    boolean lastPressSettings;
 
     // This declares the IMU needed to get the current direction the robot is facing
     IMU imu;
-
 
     //Timers used
     ElapsedTime shootTimer; // Timer used for shooting
@@ -69,6 +71,13 @@ public class TeleOpNew extends OpMode {
 
     boolean shooting;
     boolean shotActive;
+
+
+    double driveSpeedNormalFactor;
+
+    double driveSpeedSlowFactor;
+
+    boolean slowModeEnabled;
 
     int telemetryRefresh;
 
@@ -78,10 +87,10 @@ public class TeleOpNew extends OpMode {
         // Mapping motors
         flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
         servo = hardwareMap.get(CRServo.class, "servo");
-        leftFront = hardwareMap.get(DcMotor.class, "leftFront");
-        rightFront = hardwareMap.get(DcMotor.class, "rightFront");
-        leftBack = hardwareMap.get(DcMotor.class, "leftBack");
-        rightBack = hardwareMap.get(DcMotor.class, "rightBack");
+        leftFront = hardwareMap.get(DcMotorEx.class, "leftFront");
+        rightFront = hardwareMap.get(DcMotorEx.class, "rightFront");
+        leftBack = hardwareMap.get(DcMotorEx.class, "leftBack");
+        rightBack = hardwareMap.get(DcMotorEx.class, "rightBack");
 
         // Initializing servo and flywheel
         flywheel.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -98,14 +107,24 @@ public class TeleOpNew extends OpMode {
         rightBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightBack.setDirection(DcMotor.Direction.REVERSE);
 
+        // BETA for motors
+        leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
         // Initializing values
         shooting = false;
         shotActive = false;
-        lastPress = false;
+        lastPressShoot = false;
+        lastPressSpeed = false;
+        lastPressSettings = false;
+        slowModeEnabled = false;
         shootTimer = new ElapsedTime();
         shootTimer.reset();
         telemetryTime = new ElapsedTime();
         telemetryTime.reset();
+
 
         // Initializing IMU
         imu = hardwareMap.get(IMU.class, "imu");
@@ -122,15 +141,21 @@ public class TeleOpNew extends OpMode {
         // Settings
         shootMs = 300; // Time after flywheel spins up to lift servo to release the ball
         bankVelocity = 1300; // Flywheel velocity (1300 default)
-        telemetryRefresh = 200; // Telemetry refresh rate in milliseconds (Higher value = better performance)
+        telemetryRefresh = 250; // Telemetry refresh rate in milliseconds (Higher value = better performance)
+        driveSpeedNormalFactor = 1; // Factor for normal movement speed NEVER EXCEED 1
+        driveSpeedSlowFactor = driveSpeedNormalFactor/2; // Factor for slow speed NEVER EXCEED 1
+        fineTurnFactor = 0.2; // Factor for fine turning when buttons pressed
 
     }
 
     @Override
     public void loop() {
         // Main logic
-        drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);
-        shoot(shootMs, gamepad1.b);
+        drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x, gamepad1.left_bumper, gamepad1.right_bumper);
+        shoot(shootMs, gamepad1.right_trigger_pressed);
+
+        // Beta feature, toggle slow mode on and off for movement precision / demos
+        speed(gamepad1.b);
 
         // Reset IMU yaw
         if(gamepad1.a){
@@ -144,9 +169,12 @@ public class TeleOpNew extends OpMode {
 
             telemetry.addData("Heading (deg)", imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
             telemetry.addData("Shooting", shotActive);
+            // telemetry.addData("Polling",); // TODO: Calculate polling rate FOR TESTING
+
             telemetry.update();
             telemetryTime.reset();
         }
+
 
     }
 
@@ -156,23 +184,37 @@ public class TeleOpNew extends OpMode {
      * @param yAxisL Left Joystick Up/Down (Forwards/Backwards)
      * @param xAxisL Left Joystick Left/Right (Strafe)
      * @param xAxisR Right Joystick Left/Right (Turning)
+     * @param fineTurnL Button to fine turn left
+     * @param fineTurnR Button to fine turn right
      */
-    private void drive(float yAxisL, float xAxisL, float xAxisR) {
+    private void drive(float yAxisL, float xAxisL, float xAxisR, boolean fineTurnL, boolean fineTurnR) {
 
-        double lf = yAxisL + xAxisL + xAxisR;
-        double rf = yAxisL - xAxisL - xAxisR;
-        double lb = yAxisL - xAxisL + xAxisR;
-        double rb = yAxisL + xAxisL - xAxisR;
+        double turning = xAxisR;
+
+        // XOR where if 1 and only 1 fine turn button is pressed, it overrides joystick turning
+        if(fineTurnL ^ fineTurnR) {
+            turning = (fineTurnL) ? -fineTurnFactor : fineTurnFactor;
+        }
+
+
+        double lf = yAxisL + xAxisL + turning;
+        double rf = yAxisL - xAxisL - turning;
+        double lb = yAxisL - xAxisL + turning;
+        double rb = yAxisL + xAxisL - turning;
 
         double max = Math.max(1.0,
                 Math.max(Math.abs(lf),
                         Math.max(Math.abs(rf),
                                 Math.max(Math.abs(lb), Math.abs(rb)))));
 
-        lf /= max;
-        rf /= max;
-        lb /= max;
-        rb /= max;
+
+        double speedFactor = slowModeEnabled ? driveSpeedSlowFactor : driveSpeedNormalFactor;
+
+        lf = (lf / max) * speedFactor;
+        rf = (rf / max) * speedFactor;
+        lb = (lb / max) * speedFactor;
+        rb = (rb / max) * speedFactor;
+
 
         leftFront.setPower(lf);
         rightFront.setPower(rf);
@@ -186,10 +228,10 @@ public class TeleOpNew extends OpMode {
      * @param ms milliseconds for servo to turn after flywheel, ms > 0
      * @param button boolean value for gamepad button to be used
      */
-    private void shoot(int ms, boolean button){
+    private void shoot(double ms, boolean button){
 
-        boolean pressed = button && !lastPress;
-        lastPress = button;
+        boolean pressed = button && !lastPressShoot;
+        lastPressShoot = button;
 
         if(shotActive){
             if(!shooting && shootTimer.milliseconds() > ms){
@@ -211,4 +253,16 @@ public class TeleOpNew extends OpMode {
             shotActive = true;
         }
     }
+
+    private void speed(boolean button){
+
+        boolean pressed = button && !lastPressSpeed;
+        lastPressSpeed = button;
+
+        if(pressed){
+            slowModeEnabled = !slowModeEnabled;
+        }
+    }
+
+
 }
