@@ -162,6 +162,8 @@ public class TeleOpNew extends OpMode {
             imu.resetYaw();
         }
 
+        // TODO: Add fixed turning points for easy rotation?? probably using dpads but may not be nessicary
+
         // TODO: Read IMU then fix telemetry
 
         // Telemetry
