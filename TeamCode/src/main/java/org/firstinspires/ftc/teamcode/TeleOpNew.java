@@ -34,6 +34,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -55,6 +56,7 @@ public class TeleOpNew extends OpMode {
     int bankVelocity;
 
     double shootMs;
+    double waitMs;
 
     double fineTurnFactor;
     boolean lastPressShoot;
@@ -94,16 +96,19 @@ public class TeleOpNew extends OpMode {
 
         // Initializing servo and flywheel
         flywheel.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        flywheel.setDirection(DcMotor.Direction.REVERSE);
+        flywheel.setDirection(DcMotor.Direction.FORWARD);
         servo.setPower(0);
 
         // Initializing driving motors
         leftFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         leftFront.setDirection(DcMotor.Direction.REVERSE);
+
         rightFront.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightFront.setDirection(DcMotor.Direction.FORWARD);
+
         leftBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         leftBack.setDirection(DcMotor.Direction.FORWARD);
+
         rightBack.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightBack.setDirection(DcMotor.Direction.REVERSE);
 
@@ -139,20 +144,23 @@ public class TeleOpNew extends OpMode {
         imu.initialize(new IMU.Parameters(orientationOnRobot));
 
         // Settings
-        shootMs = 300; // Time after flywheel spins up to lift servo to release the ball
+        shootMs = 1000; // Time for servo to be open to let ball go
+        waitMs = 2000; // Time to wait before opening servo
         bankVelocity = 1300; // Flywheel velocity (1300 default)
-        telemetryRefresh = 250; // Telemetry refresh rate in milliseconds (Higher value = better performance)
+        telemetryRefresh = 99999999; // Telemetry refresh rate in milliseconds (Higher value = better performance)
         driveSpeedNormalFactor = 1; // Factor for normal movement speed NEVER EXCEED 1
         driveSpeedSlowFactor = driveSpeedNormalFactor/2; // Factor for slow speed NEVER EXCEED 1
-        fineTurnFactor = 0.2; // Factor for fine turning when buttons pressed
+        fineTurnFactor = 0.3; // Factor for fine turning when buttons pressed
 
     }
 
     @Override
     public void loop() {
+
         // Main logic
-        drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x, gamepad1.left_bumper, gamepad1.right_bumper);
-        shoot(shootMs, gamepad1.right_trigger_pressed);
+        drive(-gamepad1.left_stick_y, -gamepad1.left_stick_x, gamepad1.right_stick_x, gamepad1.left_bumper, gamepad1.right_bumper);
+        shoot(shootMs, waitMs, gamepad1.right_trigger_pressed);
+
 
         // Beta feature, toggle slow mode on and off for movement precision / demos
         speed(gamepad1.b);
@@ -227,21 +235,20 @@ public class TeleOpNew extends OpMode {
     /**
      * Checks button to shoot ball
      *
-     * @param ms milliseconds for servo to turn after flywheel, ms > 0
-     * @param button boolean value for gamepad button to be used
+     *  TODO: ADD PARAMS
      */
-    private void shoot(double ms, boolean button){
+    private void shoot(double shootMilliseconds, double waitMilliseconds, boolean button){
 
         boolean pressed = button && !lastPressShoot;
         lastPressShoot = button;
 
         if(shotActive){
-            if(!shooting && shootTimer.milliseconds() > ms){
+            if(!shooting && shootTimer.milliseconds() > waitMilliseconds){
                 servo.setPower(-1);
                 shooting = true;
                 shootTimer.reset();
             }
-            else if(shooting && shootTimer.milliseconds() > ms){
+            else if(shooting && shootTimer.milliseconds() > shootMilliseconds){
                 shooting = false;
                 shotActive = false;
                 servo.setPower(0);
