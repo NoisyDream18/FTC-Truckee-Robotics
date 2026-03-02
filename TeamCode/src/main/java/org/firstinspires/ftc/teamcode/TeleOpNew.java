@@ -83,6 +83,8 @@ public class TeleOpNew extends OpMode {
 
     int telemetryRefresh;
 
+    int waitIncrement;
+
     @Override
     public void init() {
 
@@ -151,6 +153,7 @@ public class TeleOpNew extends OpMode {
         driveSpeedNormalFactor = 1; // Factor for normal movement speed NEVER EXCEED 1
         driveSpeedSlowFactor = driveSpeedNormalFactor/2; // Factor for slow speed NEVER EXCEED 1
         fineTurnFactor = 0.3; // Factor for fine turning when buttons pressed
+        waitIncrement = 50; // Increment to change with dpads waitMS for shooting
 
     }
 
@@ -164,6 +167,12 @@ public class TeleOpNew extends OpMode {
 
         // Beta feature, toggle slow mode on and off for movement precision / demos
         speed(gamepad1.b);
+
+        if(gamepad1.dpad_up){
+            waitMs += waitIncrement;
+        } else if(gamepad1.dpad_down){
+            waitMs -= waitIncrement;
+        }
 
         // Reset IMU yaw
         if(gamepad1.a){
@@ -179,6 +188,7 @@ public class TeleOpNew extends OpMode {
 
             telemetry.addData("Heading (deg)", imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
             telemetry.addData("Shooting", shotActive);
+            telemetry.addData("WaitMs", waitMs);
             // telemetry.addData("Polling",); // TODO: Calculate polling rate FOR TESTING
 
             telemetry.update();
