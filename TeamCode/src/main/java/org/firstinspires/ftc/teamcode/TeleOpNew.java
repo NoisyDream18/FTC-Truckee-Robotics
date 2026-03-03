@@ -43,7 +43,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 /*
  *
  */
-@TeleOp(name = "TeleOpNew [TESTING]", group = "Robot")
+@TeleOp(name = "TeleOpNew [STABLE]", group = "Robot")
 public class TeleOpNew extends OpMode {
 
     private DcMotorEx flywheel;
@@ -149,7 +149,7 @@ public class TeleOpNew extends OpMode {
         shootMs = 1000; // Time for servo to be open to let ball go
         waitMs = 2000; // Time to wait before opening servo
         bankVelocity = 1300; // Flywheel velocity (1300 default)
-        telemetryRefresh = 99999999; // Telemetry refresh rate in milliseconds (Higher value = better performance)
+        telemetryRefresh = 200; // Telemetry refresh rate in milliseconds (Higher value = better performance)
         driveSpeedNormalFactor = 1; // Factor for normal movement speed NEVER EXCEED 1
         driveSpeedSlowFactor = driveSpeedNormalFactor/2; // Factor for slow speed NEVER EXCEED 1
         fineTurnFactor = 0.3; // Factor for fine turning when buttons pressed
@@ -167,12 +167,6 @@ public class TeleOpNew extends OpMode {
 
         // Beta feature, toggle slow mode on and off for movement precision / demos
         speed(gamepad1.b);
-
-        if(gamepad1.dpad_up){
-            waitMs += waitIncrement;
-        } else if(gamepad1.dpad_down){
-            waitMs -= waitIncrement;
-        }
 
         // Reset IMU yaw
         if(gamepad1.a){
